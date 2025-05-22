@@ -206,6 +206,7 @@ class StateTable:
     [140, 252, 0, 40], [249, 135, 41, 0], [250, 69, 40, 1], [80, 251, 1, 40],
     [140, 252, 0, 41]
 ]
+
     def nex(self, state: int, sel: int) -> int:
         return self.table[state][sel]
 
@@ -268,6 +269,8 @@ class SmartCompressor:
 
 # Models and compression classes would go here
 # (Predictor, Encoder, etc. from the first code)
+
+
 
 def main():
     print("Created by Jurijus Pacalovas.")
