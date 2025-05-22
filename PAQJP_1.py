@@ -206,6 +206,7 @@ class StateTable:
     [140, 252, 0, 40], [249, 135, 41, 0], [250, 69, 40, 1], [80, 251, 1, 40],
     [140, 252, 0, 41]
 ]
+    
     def nex(self, state: int, sel: int) -> int:
         return self.table[state][sel]
 
@@ -409,39 +410,47 @@ class PAQCompressor:
         os.remove("temp.paq")
         return bytes(result)
 
-# Smart Compressor with transformations
+
+
 class SmartCompressor:
     def __init__(self):
-        self.paq = PAQCompressor()
+        self.compressor = None  # Will be initialized with the best compressor
     
-    def reversible_transform(self, data: bytes) -> bytes:
+    def huffman_compress(self, data):
+        # Placeholder for actual compression
+        return self.compress_with_best_method(data)
+    
+    def huffman_decompress(self, data):
+        # Placeholder for actual decompression
+        return self.decompress_with_best_method(data)
+    
+    def reversible_transform(self, data):
         return transform_with_prime_xor_every_3_bytes(data)
     
-    def reverse_reversible_transform(self, data: bytes) -> bytes:
+    def reverse_reversible_transform(self, data):
         return transform_with_prime_xor_every_3_bytes(data)
     
-    def compress_with_best_method(self, data: bytes) -> bytes:
-        # Try both transformation methods
+    def compress_with_best_method(self, data):
+        # Try both methods and return the best one
         transformed_smart = self.reversible_transform(data)
-        compressed_smart = self.paq.compress(transformed_smart)
+        compressed_smart = self.paq_compress(transformed_smart)
         
         transformed_simple = transform_with_pattern(data)
-        compressed_simple = self.paq.compress(transformed_simple)
+        compressed_simple = self.paq_compress(transformed_simple)
         
-        # Choose the best compression
         if len(compressed_smart) < len(compressed_simple):
             return b'\x01' + compressed_smart  # Marker for smart transform
         else:
             return b'\x02' + compressed_simple  # Marker for simple transform
     
-    def decompress_with_best_method(self, data: bytes) -> bytes:
+    def decompress_with_best_method(self, data):
         if len(data) < 1:
             return b''
         
         method_marker = data[0]
         compressed_data = data[1:]
         
-        decompressed = self.paq.decompress(compressed_data)
+        decompressed = self.paq_decompress(compressed_data)
         
         if method_marker == 1:
             return self.reverse_reversible_transform(decompressed)
@@ -449,7 +458,6 @@ class SmartCompressor:
             return transform_with_pattern(decompressed)
         else:
             raise ValueError("Unknown compression method marker")
-
     
     def paq_compress(self, data):
         # Placeholder for actual PAQ compression
