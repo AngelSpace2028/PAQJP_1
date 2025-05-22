@@ -206,51 +206,242 @@ class StateTable:
     [140, 252, 0, 40], [249, 135, 41, 0], [250, 69, 40, 1], [80, 251, 1, 40],
     [140, 252, 0, 41]
 ]
-
     def nex(self, state: int, sel: int) -> int:
         return self.table[state][sel]
 
 nex = StateTable()
 
+# Context Map
+class ContextMap:
+    def __init__(self, size: int, contexts: int):
+        self.size = size
+        self.contexts = contexts
+        self.table = [0] * (size * contexts)
+        self.hash = [0] * contexts
+    
+    def set(self, cx: int, val: int):
+        self.hash[cx] = val
+    
+    def get(self, cx: int) -> int:
+        return self.table[(self.hash[cx] % self.size) * self.contexts + cx]
+    
+    def update(self, cx: int, bit: int):
+        idx = (self.hash[cx] % self.size) * self.contexts + cx
+        self.table[idx] = (self.table[idx] << 1) | bit
+
+# Mixer
+class Mixer:
+    def __init__(self, inputs: int, contexts: int, rate: int = 8):
+        self.inputs = inputs
+        self.contexts = contexts
+        self.rate = rate
+        self.weights = [0] * (inputs * contexts)
+        self.context = [0] * contexts
+    
+    def set(self, cx: int, val: int):
+        self.context[cx] = val
+    
+    def update(self, bit: int):
+        for cx in range(self.contexts):
+            idx = self.context[cx] * self.inputs
+            err = (bit << 12) - self.prediction
+            for i in range(self.inputs):
+                self.weights[idx + i] += (self.inputs[i] * err * self.rate) >> 16
+    
+    @property
+    def prediction(self) -> int:
+        total = 0
+        for cx in range(self.contexts):
+            idx = self.context[cx] * self.inputs
+            for i in range(self.inputs):
+                total += self.weights[idx + i] * self.inputs[i]
+        return squash(total >> 8)
+
+# Predictor
+class Predictor:
+    def __init__(self):
+        self.pr = 2048  # Initial prediction (P(1) = 0.5)
+        self.cm = ContextMap(MEM, 8)
+        self.mixer = Mixer(256, 8)
+        self.state = 0
+    
+    def p(self) -> int:
+        return self.pr
+    
+    def update(self, bit: int):
+        # Update context maps
+        for cx in range(8):
+            self.cm.update(cx, bit)
+        
+        # Update mixer
+        self.mixer.update(bit)
+        
+        # Update prediction
+        self.pr = self.mixer.prediction
+        
+        # Update state
+        self.state = nex.nex(self.state, bit)
+
+# Encoder
+class Encoder:
+    def __init__(self, mode: Mode, filename: str):
+        self.mode = mode
+        self.filename = filename
+        self.file = open(filename, "wb+" if mode == Mode.COMPRESS else "rb+")
+        self.x1 = 0
+        self.x2 = 0xFFFFFFFF
+        self.x = 0
+        self.predictor = Predictor()
+        
+        if mode == Mode.DECOMPRESS and level > 0:
+            # Read first 4 bytes for decompression
+            self.x = struct.unpack('>I', self.file.read(4))[0]
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+    
+    def close(self):
+        if self.file:
+            self.file.close()
+            self.file = None
+    
+    def size(self) -> int:
+        return os.path.getsize(self.filename)
+    
+    def flush(self):
+        if self.mode == Mode.COMPRESS and level > 0:
+            self.file.write(struct.pack('>B', self.x1 >> 24))
+    
+    def compress(self, c: int):
+        if self.mode != Mode.COMPRESS:
+            raise ValueError("Not in compress mode")
+        
+        if level == 0:
+            self.file.write(bytes([c]))
+        else:
+            for i in range(7, -1, -1):
+                self.code((c >> i) & 1)
+    
+    def decompress(self) -> int:
+        if self.mode == Mode.COMPRESS:
+            raise ValueError("Not in decompress mode")
+        
+        if level == 0:
+            return ord(self.file.read(1))
+        else:
+            c = 0
+            for _ in range(8):
+                c += c + self.code()
+            return c
+    
+    def code(self, bit: int = None) -> int:
+        p = self.predictor.p()
+        assert 0 <= p < 4096
+        p += p < 2048
+        
+        xmid = self.x1 + ((self.x2 - self.x1) >> 12) * p + (((self.x2 - self.x1) & 0xFFF) * p >> 12)
+        assert self.x1 <= xmid < self.x2
+        
+        if self.mode == Mode.DECOMPRESS:
+            y = 1 if self.x <= xmid else 0
+        else:
+            y = bit
+        
+        if y:
+            self.x2 = xmid
+        else:
+            self.x1 = xmid + 1
+        
+        self.predictor.update(y)
+        
+        while ((self.x1 ^ self.x2) & 0xFF000000) == 0:
+            if self.mode == Mode.COMPRESS:
+                self.file.write(struct.pack('>B', self.x2 >> 24))
+            
+            self.x1 <<= 8
+            self.x2 = (self.x2 << 8) + 255
+            
+            if self.mode == Mode.DECOMPRESS:
+                byte = self.file.read(1)
+                if not byte:
+                    byte = b'\x00'  # Handle EOF
+                self.x = (self.x << 8) | ord(byte)
+        
+        return y
+
+# PAQ Compressor
+class PAQCompressor:
+    def __init__(self):
+        self.models = []
+        self.mixer = Mixer(256, 8)
+    
+    def add_model(self, model):
+        self.models.append(model)
+    
+    def compress(self, data: bytes) -> bytes:
+        with contextlib.closing(Encoder(Mode.COMPRESS, "temp.paq")) as enc:
+            for byte in data:
+                enc.compress(byte)
+            enc.flush()
+        
+        with open("temp.paq", "rb") as f:
+            compressed = f.read()
+        
+        os.remove("temp.paq")
+        return compressed
+    
+    def decompress(self, data: bytes) -> bytes:
+        with open("temp.paq", "wb") as f:
+            f.write(data)
+        
+        result = bytearray()
+        with contextlib.closing(Encoder(Mode.DECOMPRESS, "temp.paq")) as enc:
+            while True:
+                try:
+                    byte = enc.decompress()
+                    result.append(byte)
+                except:
+                    break
+        
+        os.remove("temp.paq")
+        return bytes(result)
+
+# Smart Compressor with transformations
 class SmartCompressor:
     def __init__(self):
-        self.compressor = None  # Will be initialized with the best compressor
+        self.paq = PAQCompressor()
     
-    def huffman_compress(self, data):
-        # Placeholder for actual compression
-        return self.compress_with_best_method(data)
-    
-    def huffman_decompress(self, data):
-        # Placeholder for actual decompression
-        return self.decompress_with_best_method(data)
-    
-    def reversible_transform(self, data):
+    def reversible_transform(self, data: bytes) -> bytes:
         return transform_with_prime_xor_every_3_bytes(data)
     
-    def reverse_reversible_transform(self, data):
+    def reverse_reversible_transform(self, data: bytes) -> bytes:
         return transform_with_prime_xor_every_3_bytes(data)
     
-    def compress_with_best_method(self, data):
-        # Try both methods and return the best one
+    def compress_with_best_method(self, data: bytes) -> bytes:
+        # Try both transformation methods
         transformed_smart = self.reversible_transform(data)
-        compressed_smart = self.paq_compress(transformed_smart)
+        compressed_smart = self.paq.compress(transformed_smart)
         
         transformed_simple = transform_with_pattern(data)
-        compressed_simple = self.paq_compress(transformed_simple)
+        compressed_simple = self.paq.compress(transformed_simple)
         
+        # Choose the best compression
         if len(compressed_smart) < len(compressed_simple):
             return b'\x01' + compressed_smart  # Marker for smart transform
         else:
             return b'\x02' + compressed_simple  # Marker for simple transform
     
-    def decompress_with_best_method(self, data):
+    def decompress_with_best_method(self, data: bytes) -> bytes:
         if len(data) < 1:
             return b''
         
         method_marker = data[0]
         compressed_data = data[1:]
         
-        decompressed = self.paq_decompress(compressed_data)
+        decompressed = self.paq.decompress(compressed_data)
         
         if method_marker == 1:
             return self.reverse_reversible_transform(decompressed)
@@ -258,6 +449,7 @@ class SmartCompressor:
             return transform_with_pattern(decompressed)
         else:
             raise ValueError("Unknown compression method marker")
+
     
     def paq_compress(self, data):
         # Placeholder for actual PAQ compression
