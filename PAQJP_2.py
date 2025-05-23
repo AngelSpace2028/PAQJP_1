@@ -506,8 +506,8 @@ class SmartCompressor:
         
         # Choose the smallest output
         compressed_methods = [
-            (b'\x01', compressed_smart, "Prime XOR + PAQ8F"),
-            (b'\x02', compressed_simple, "Pattern + PAQ8F"),
+            (b'\x01', compressed_smart, "Prime XOR + PAQ8JP"),
+            (b'\x02', compressed_simple, "Pattern + PAQ8JP"),
             (b'\x03', compressed_zlib, "zlib")
         ]
         method_marker, compressed_data, method_name = min(
