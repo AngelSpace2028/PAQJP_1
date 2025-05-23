@@ -489,11 +489,11 @@ class SmartCompressor:
         return transform_with_prime_xor_every_3_bytes(data)
     
     def compress_with_best_method(self, data):
-        # Method 1: Prime XOR transformation + PAQ8F
+        # Method 1: Prime XOR transformation + PAQJP_2
         transformed_smart = self.reversible_transform(data)
         compressed_smart = self.compressor.compress(transformed_smart)
         
-        # Method 2: Pattern transformation + PAQ8F
+        # Method 2: Pattern transformation + PAQJP_2
         transformed_simple = transform_with_pattern(data)
         compressed_simple = self.compressor.compress(transformed_simple)
         
