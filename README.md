@@ -54,3 +54,5 @@ Invert bits	b'\x54\x90\x75'
 Invert again	b'\xab\x6f\x8a'
 XOR again	b'\xab\x6f\x8f'
 Back to int	11234567
+
+I have added minus from the table.
