@@ -9,7 +9,7 @@ from enum import Enum, IntEnum
 import paq
 
 # Constants
-PROGNAME = "paqjp_1"
+PROGNAME = "PAQJP_1"
 DEFAULT_OPTION = 9
 MEM = 0x10000 << DEFAULT_OPTION
 
