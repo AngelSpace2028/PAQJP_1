@@ -20,6 +20,3 @@ Returns the decompressed data. Why Lossless? All transformations and compression
 Transform_04 might create arithmetic sequences that PAQ compresses well.
 Transform_05 could align bits for better zlib performance.
 If the file is small, Huffman coding might outperform both.
-The system tests all options and picks the smallest output, ensuring optimal compression. A step labelled “07” in a numbered algorithm
-• For example, “Step 07: Apply compression” in a list of 10 steps. An algorithm developed in or associated with the year 2007
-• Such as a cryptographic algorithm, compression method, or AI model published that year. A specific algorithm from a known source
